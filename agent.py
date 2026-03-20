@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from deepagents import create_deep_agent
 from langchain.chat_models import init_chat_model
+from skill_manager import load_skills
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,11 +36,15 @@ class AIAgent:
                 api_key=self.api_key,
             )
             
+            # Load skills from workspace
+            skills = load_skills()
+            
             self.agent = create_deep_agent(
                 model=model,
                 tools=[],
                 system_prompt=self.system_prompt,
                 subagents=[],
+                skills=skills,
             )
         except Exception as e:
             self.agent = None

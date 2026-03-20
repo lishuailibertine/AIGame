@@ -1,35 +1,21 @@
 import sys
-import threading
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QTextEdit, QPushButton, QLabel)
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QFont, QColor
+                             QHBoxLayout, QListWidget, QListWidgetItem, QStackedWidget)
+from PyQt5.QtGui import QFont
 
-from main import init_agent, chat
-
-
-class AgentWorker(QObject):
-    """Worker thread for agent responses to avoid blocking GUI"""
-    response_ready = pyqtSignal(str)
-    error_occurred = pyqtSignal(str)
-    
-    def __init__(self, message):
-        super().__init__()
-        self.message = message
-    
-    def run(self):
-        try:
-            response = chat(self.message)
-            self.response_ready.emit(response)
-        except Exception as e:
-            self.error_occurred.emit(f"Error: {str(e)}")
+from agent import init_agent
+from workspace import init_workspace
+from ui_chat import ChatPage
+from ui_apps import AppListPage
+from ui_skills import SkillsPage
 
 
 class AgentGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.init_ui()
-        self.worker_thread = None
+        
+        # Initialize workspace on app startup
+        init_workspace()
         
         # Initialize agent
         try:
@@ -38,88 +24,86 @@ class AgentGUI(QMainWindow):
         except Exception as e:
             self.agent_ready = False
             self.error_message = str(e)
-            self.statusBar().showMessage(f"Error: {self.error_message}")
+        
+        self.init_ui()
     
     def init_ui(self):
         """Initialize the user interface"""
         self.setWindowTitle("AI Agent Chat")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1000, 600)
         
         # Central widget and main layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Title
-        title = QLabel("AI Agent Conversation")
-        title_font = QFont()
-        title_font.setPointSize(14)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        main_layout.addWidget(title)
+        # Left sidebar menu
+        self.menu_list = QListWidget()
+        self.menu_list.setMaximumWidth(150)
+        self.menu_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1e1e1e;
+                border-right: 1px solid #444;
+            }
+            QListWidget::item {
+                padding: 10px;
+                color: #ffffff;
+                border: none;
+            }
+            QListWidget::item:selected {
+                background-color: #0e639c;
+                border-left: 3px solid #007acc;
+            }
+            QListWidget::item:hover {
+                background-color: #2d2d30;
+            }
+        """)
         
-        # Chat display area
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
-        self.chat_display.setStyleSheet("background-color: #2b2b2b; color: #ffffff; font-size: 11pt; padding: 5px;")
-        main_layout.addWidget(self.chat_display)
+        # Add menu items
+        menu_items = ["AI会话", "应用列表", "技能中心"]
+        for item in menu_items:
+            self.menu_list.addItem(QListWidgetItem(item))
         
-        # Input area layout
-        input_layout = QHBoxLayout()
+        self.menu_list.itemClicked.connect(self.on_menu_clicked)
+        main_layout.addWidget(self.menu_list)
         
-        self.input_field = QTextEdit()
-        self.input_field.setMaximumHeight(80)
-        self.input_field.setPlaceholderText("Type your message here...")
-        self.input_field.setStyleSheet("font-size: 11pt;")
-        input_layout.addWidget(self.input_field)
+        # Right content area (stacked widget for switching views)
+        self.stacked_widget = QStackedWidget()
         
-        # Send button
-        self.send_button = QPushButton("Send")
-        self.send_button.setMaximumWidth(100)
-        self.send_button.clicked.connect(self.send_message)
-        self.send_button.setStyleSheet("font-weight: bold; font-size: 11pt;")
-        input_layout.addWidget(self.send_button)
+        # Page 1: AI Chat
+        self.chat_page = ChatPage(
+            agent_ready=self.agent_ready, 
+            status_callback=self.update_status
+        )
+        self.stacked_widget.addWidget(self.chat_page)
         
-        main_layout.addLayout(input_layout)
+        # Page 2: Application List
+        self.app_page = AppListPage()
+        self.stacked_widget.addWidget(self.app_page)
+        
+        # Page 3: Skills
+        self.skills_page = SkillsPage()
+        self.stacked_widget.addWidget(self.skills_page)
+        
+        # Set initial page
+        self.stacked_widget.setCurrentIndex(0)
+        main_layout.addWidget(self.stacked_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready")
-    
-    def send_message(self):
-        """Handle sending a message to the agent"""
         if not self.agent_ready:
-            self.chat_display.append("<b>Error:</b> Agent not initialized. Check your API key.")
-            return
-        
-        message = self.input_field.toPlainText().strip()
-        if not message:
-            return
-        
-        # Display user message
-        self.chat_display.append(f"<b>You:</b> {message}")
-        self.input_field.clear()
-        self.send_button.setEnabled(False)
-        self.statusBar().showMessage("Waiting for response...")
-        
-        # Create and start worker thread
-        self.worker = AgentWorker(message)
-        self.worker_thread = threading.Thread(target=self.worker.run)
-        self.worker.response_ready.connect(self.on_response)
-        self.worker.error_occurred.connect(self.on_error)
-        self.worker_thread.start()
+            self.statusBar().showMessage(f"Error: {self.error_message}")
+        else:
+            self.statusBar().showMessage("Ready")
     
-    def on_response(self, response):
-        """Handle agent response"""
-        self.chat_display.append(f"<b>Agent:</b> {response}")
-        self.send_button.setEnabled(True)
-        self.statusBar().showMessage("Ready")
-        self.input_field.setFocus()
+    def on_menu_clicked(self, item):
+        """Handle menu item clicks"""
+        index = self.menu_list.row(item)
+        self.stacked_widget.setCurrentIndex(index)
     
-    def on_error(self, error):
-        """Handle agent error"""
-        self.chat_display.append(f"<b style='color: red;'>Error:</b> {error}")
-        self.send_button.setEnabled(True)
-        self.statusBar().showMessage("Error occurred")
+    def update_status(self, message):
+        """Update status bar message"""
+        self.statusBar().showMessage(message)
 
 
 def main():
