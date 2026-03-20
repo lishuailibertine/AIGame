@@ -1,0 +1,4 @@
+deepagents==0.4.11
+langchain-deepseek
+PyQt5
+python-dotenv
