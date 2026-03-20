@@ -28,15 +28,16 @@ class SkillsPage(QWidget):
         self.skills_list = QListWidget()
         self.skills_list.setStyleSheet("""
             QListWidget {
-                background-color: #f0f0f0;
+                background-color: #2b2b2b;
+                color: #ffffff;
                 font-size: 11pt;
             }
             QListWidget::item {
                 padding: 10px;
-                border-bottom: 1px solid #e0e0e0;
+                border-bottom: 1px solid #444;
             }
             QListWidget::item:hover {
-                background-color: #e0e0e0;
+                background-color: #3d3d3d;
             }
             QListWidget::item:selected {
                 background-color: #0e639c;
